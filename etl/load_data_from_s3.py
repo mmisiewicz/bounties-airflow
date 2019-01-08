@@ -12,7 +12,7 @@ from airflow.hooks.S3_hook import S3Hook
 from airflow.hooks.postgres_hook import PostgresHook
 from airflow.operators.postgres_operator import PostgresOperator
 
-REGEX = re.compile("""\[pid:\s(?P<pid>\d*)\|app:\s-\|req:\s-\/-] (?P<ip>\d*\.\d*\.\d*\.\d*) \(-\)\s\{(?P<num_request_variables>\d*)\svars\sin\s(?P<packet_size>\d*)\sbytes}\s\[(?P<time_received>.*)]\s(?P<http_method>\w*)\s(?P<uri>\/.*)\s=(?:\\u003e|>)\sgenerated\s(?P<response_size>\d*)\sbytes\sin\s(?P<response_time>\d*)\smsecs\s\(HTTP\/(?:\d*\.\d*)\s(?P<http_status>\d*)\)\s(?P<num_headers>\d*) headers\sin\s(?P<header_size>\d*)\sbytes\s\((?P<switches>\d*)\sswitches\son\score\s(?P<core>\d*)\)\sreferrer:\s(?P<referrer>[^\s]*)\sUA\s(?P<user_agent>.*)\shas\swallet:\s(?P<has_wallet>.*)\scookies:\s(?P<cookies>.*)\\n""")
+REGEX = re.compile(r"\[pid:\s(?P<pid>\d*)\|app:\s-\|req:\s-\/-] (?P<ip>\d*\.\d*\.\d*\.\d*) \(-\)\s\{(?P<num_request_variables>\d*)\svars\sin\s(?P<packet_size>\d*)\sbytes}\s\[(?P<time_received>.*)]\s(?P<http_method>\w*)\s(?P<uri>\/.*)\s=(?:\\u003e|>)\sgenerated\s(?P<response_size>\d*)\sbytes\sin\s(?P<response_time>\d*)\smsecs\s\(HTTP\/(?:\d*\.\d*)\s(?P<http_status>\d*)\)\s(?P<num_headers>\d*) headers\sin\s(?P<header_size>\d*)\sbytes\s\((?P<switches>\d*)\sswitches\son\score\s(?P<core>\d*)\)\sreferrer:\s(?P<referrer>[^\s]*)\sUA\s(?P<user_agent>.*)\shas\swallet:\s(?P<has_wallet>.*)\scookies:\s(?P<cookies>.*)\\n")
 
 sql_create_partition_command = """
 CREATE TABLE IF NOT EXISTS staging.raw_s3_logs_%(y)s_%(m)s_%(d)s
@@ -23,7 +23,25 @@ has_wallet boolean, session_id text, user_id int, user_id_uuid uuid, ga_ga text,
 row_added timestamp default now())
 ;
 """
-# --PARTITION OF raw_s3_logs FOR VALUES FROM ('%(y)-%(m)-%(d) 00:00:00') TO ('%(y)-%(m)-%(d) 23:59:59');
+
+attach_part_sql = """
+    ALTER TABLE staging.raw_s3_logs ATTACH PARTITION staging.raw_s3_logs_%(y)s_%(m)s_%(d)s
+    FOR VALUES FROM ('%(dy)s-%(dm)s-%(dd)s 00:00:00') TO ('%(tdy)s-%(tdm)s-%(tdd)s 00:00:00' )
+"""
+
+def attach_partition(**context):
+    pg = PostgresHook(postgres_conn_id='postgres_data_warehouse')
+    conn = pg.get_conn()
+    cur = conn.cursor()
+    try:
+        print(attach_part_sql % context['templates_dict'])
+        cur.execute(attach_part_sql % context['templates_dict'])
+        conn.commit()
+        conn.close()
+    except (psycopg2.ProgrammingError):
+        print("Warning: ignoring exception creating partition")
+        pass
+
 sql_truncate_table_command = """ TRUNCATE TABLE staging.raw_s3_logs_%(y)s_%(m)s_%(d)s """
 
 default_args = {
@@ -37,21 +55,24 @@ default_args = {
     'retry_delay': timedelta(minutes=5)
 }
 
-dag = DAG('s3_log_etl', default_args=default_args, schedule_interval= '@daily')
+dag = DAG('s3_log_etl', default_args=default_args, schedule_interval= '@hourly')
 # yesterday
 DY = """{{ prev_execution_date.strftime("%Y") }}"""
 DM = """{{ prev_execution_date.strftime("%m") }}"""
 DD = """{{ prev_execution_date.strftime("%d") }}"""
+DD = """{{ prev_execution_date.strftime("%H") }}"""
 # yesterday's partition
 YDY = """{{ (prev_execution_date - macros.timedelta(days = 1)).strftime("%Y") }}"""
 YDM = """{{ (prev_execution_date - macros.timedelta(days = 1)).strftime("%m") }}"""
 YDD = """{{ (prev_execution_date - macros.timedelta(days = 1)).strftime("%d") }}"""
+YDH = """{{ (prev_execution_date - macros.timedelta(days = 1)).strftime("%H") }}"""
 # tomorrow
 TDY = """{{ execution_date.strftime("%Y") }}"""
 TDM = """{{ execution_date.strftime("%m") }}"""
 TDD = """{{ execution_date.strftime("%d") }}"""
+TDH = """{{ execution_date.strftime("%H") }}"""
 
-FILEPATH = """%s/%s/%s""" % (DY, DM, DD)
+FILEPATH = """%s/%s/%s/%s""" % (DY, DM, DD, DH)
 
 def process_cookie_list(cookies_string):
     cookie_dict_clean = {}
@@ -105,6 +126,7 @@ def process_log_files(**context):
     dy = context['templates_dict']['dy']
     dm = context['templates_dict']['dm']
     dd = context['templates_dict']['dd']
+    dh = context['templates_dict']['dh']
     files = s3.list_keys("bountiesapilog", prefix=filepath)
     files_processed = []
     log_data = []
@@ -158,6 +180,15 @@ def process_log_files(**context):
     conn.commit()
     conn.close()
 
+attach_partitions = PythonOperator(
+    task_id="attach_partitions",
+    python_callable=attach_partition,
+    provide_context=True,
+    templates_dict={'lhdy':DY, 'lhdm':DM, 'lhdd':DD,
+                    'tdy':TDY, 'tdm':TDM, 'tdd':TDD},
+    dag=dag
+)
+
 load_logs_to_postgres = PythonOperator(
     task_id='parse_logs_and_load_to_staging',
     python_callable=process_log_files,
@@ -177,23 +208,23 @@ sensor = S3KeySensor(
 
 clear_partitions = PostgresOperator(
     task_id='clear_partitions',
-    postgres_conn_id = 'postgres_data_warehouse',
-    sql = sql_truncate_table_command % {'y':DY, 'm':DM, 'd':DD},
+    postgres_conn_id='postgres_data_warehouse',
+    sql=sql_truncate_table_command % {'y':DY, 'm':DM, 'd':DD},
     dag=dag
 )
 
 create_partitions = PostgresOperator(
-    task_id = "create_table",
-    postgres_conn_id = 'postgres_data_warehouse',
-    sql = sql_create_partition_command % {'y':DY, 'm':DM, 'd':DD},
+    task_id="create_table",
+    postgres_conn_id='postgres_data_warehouse',
+    sql=sql_create_partition_command % {'y':DY, 'm':DM, 'd':DD},
     dag=dag
 )
 
 
 move_rows_to_partitions = PostgresOperator(
-    task_id = "move_rows_to_partitions",
-    postgres_conn_id = 'postgres_data_warehouse',
-    sql = """
+    task_id="move_rows_to_partitions",
+    postgres_conn_id='postgres_data_warehouse',
+    sql="""
     INSERT INTO staging.raw_s3_logs_%(yy)s_%(ym)s_%(yd)s (pid, ip, num_request_variables, packet_size, time_received,
         http_method, uri, response_size, http_status, num_headers,
         header_size, switches, core, referrer, user_agent, has_wallet,
@@ -210,15 +241,12 @@ move_rows_to_partitions = PostgresOperator(
     dag=dag
 )
 
-attach_partitions = PostgresOperator(
-    task_id = "attach_partitions",
-    postgres_conn_id = 'postgres_data_warehouse',
-    sql = """
-    ALTER TABLE staging.raw_s3_logs ATTACH PARTITION staging.raw_s3_logs_%(y)s_%(m)s_%(d)s
-    FOR VALUES FROM ('%(y)s-%(m)s-%(d)s 00:00:00') TO ('%(tdy)s-%(tdm)s-%(tdd)s 00:00:00' )
-    """ % {'y':DY, 'm':DM, 'd':DD, 'tdy':TDY, 'tdm':TDM, 'tdd':TDD},
-    dag=dag
-)
+# attach_partitions = PostgresOperator(
+#     task_id = "attach_partitions",
+#     postgres_conn_id = 'postgres_data_warehouse',
+#     sql =  % {'y':DY, 'm':DM, 'd':DD, 'tdy':TDY, 'tdm':TDM, 'tdd':TDD},
+#     dag=dag
+# )
 
 clear_partitions.set_upstream(create_partitions)
 create_partitions.set_upstream(sensor)
