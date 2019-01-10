@@ -54,6 +54,12 @@ WHERE
     and time_received < '%(dy)s-%(dm)s-%(dd)s %(dh)s:00:00'
 """
 
+delete_sql = """
+DELETE FROM staging.user_page_log WHERE
+    time_received >= '%(lhdy)s-%(lhdm)s-%(lhdd)s %(lhdh)s:00:00'
+    and time_received < '%(dy)s-%(dm)s-%(dd)s %(dh)s:00:00'
+"""
+
 default_args = {
     'owner': 'michael.misiewicz',
     'depends_on_past': True,
@@ -92,6 +98,14 @@ move_rows_to_partitions = PostgresOperator(
     dag=dag
 )
 
+clear_partitions = PostgresOperator(
+    task_id="clear_partitions",
+    postgres_conn_id='postgres_data_warehouse',
+    sql=delete_sql % {'dy':DY, 'dm':DM, 'dd':DD, 'dh':DH, 'lhdy':LHDY,
+                      'lhdm':LHDM, 'lhdd':LHDD, 'lhdh':LHDH},
+    dag=dag
+)
+
 def attach_partition(**context):
     pg = PostgresHook(postgres_conn_id='postgres_data_warehouse')
     conn = pg.get_conn()
@@ -114,6 +128,7 @@ attach_partitions = PythonOperator(
     dag=dag
 )
 
-create_partitions.set_upstream(sensor)
+clear_partitions.set_upstream(sensor)
+create_partitions.set_upstream(clear_partitions)
 move_rows_to_partitions.set_upstream(create_partitions)
 attach_partitions.set_upstream(move_rows_to_partitions)

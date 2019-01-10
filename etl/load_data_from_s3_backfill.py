@@ -44,12 +44,13 @@ def attach_partition(**context):
         pass
 
 sql_truncate_table_command = """ DELETE FROM staging.raw_s3_logs_%(y)s_%(m)s_%(d)s
-WHERE date_trunc('hour',time_received) = '%(y)s-%(m)s-%(d)s %(h)s:00:00'"""
+WHERE date_trunc('day',time_received) = '%(y)s-%(m)s-%(d)s 00:00:00'"""
 
 default_args = {
     'owner': 'michael.misiewicz',
     'depends_on_past': False,
     'start_date': datetime(2019, 1, 9),
+    'end_date': datetime(2019, 1, 10),
     'email': ['michael.misiewicz@consensys.net'],
     'email_on_failure': True,
     'email_on_retry': False,
@@ -57,8 +58,8 @@ default_args = {
     'retry_delay': timedelta(minutes=5)
 }
 
-dag = DAG('s3_log_etl', default_args=default_args, schedule_interval= '@hourly')
-# previous hour
+dag = DAG('s3_log_etl_backfill', default_args=default_args, schedule_interval= '@daily')
+# run on the previous hour
 DY = """{{ prev_execution_date.strftime("%Y") }}"""
 DM = """{{ prev_execution_date.strftime("%m") }}"""
 DD = """{{ prev_execution_date.strftime("%d") }}"""
@@ -73,7 +74,7 @@ TDM = """{{ (prev_execution_date + macros.timedelta(days = 1)).strftime("%m") }}
 TDD = """{{ (prev_execution_date + macros.timedelta(days = 1)).strftime("%d") }}"""
 
 
-FILEPATH = """%s/%s/%s/%s""" % (DY, DM, DD, DH)
+FILEPATH = """%s/%s/%s""" % (DY, DM, DD)
 
 def process_cookie_list(cookies_string):
     cookie_dict_clean = {}
@@ -241,13 +242,6 @@ move_rows_to_partitions = PostgresOperator(
         """ % {'y':DY, 'm':DM, 'd':DD, 'yy':YDY, 'ym':YDM, 'yd':YDD},
     dag=dag
 )
-
-# attach_partitions = PostgresOperator(
-#     task_id = "attach_partitions",
-#     postgres_conn_id = 'postgres_data_warehouse',
-#     sql =  % {'y':DY, 'm':DM, 'd':DD, 'tdy':TDY, 'tdm':TDM, 'tdd':TDD},
-#     dag=dag
-# )
 
 clear_partitions.set_upstream(create_partitions)
 create_partitions.set_upstream(sensor)
