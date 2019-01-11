@@ -22,10 +22,10 @@ LHDH = """{{ prev_execution_date.strftime("%H") }}"""
 insert_sql = """
 INSERT INTO public.log_bounty_view (time_received, bounty_id, user_agent,
     has_wallet, ip, session_id, user_id, user_id_uuid, ga_ga, ga_gid)
-    SELECT time_received, substring(referrer from '/bounty/([0-9]+)/')::int as bounty_id,
+    SELECT time_received, substring(referrer from '/bounty/([0-9]+)')::int as bounty_id,
     user_agent, has_wallet, ip, session_id, user_id, user_id_uuid, ga_ga, ga_gid
     FROM staging.user_page_log
-    WHERE uri = '/analytics/ping/' and referrer ~ '/bounty/[0-9]+/'
+    WHERE uri = '/analytics/ping/' and referrer ~ '/bounty/[0-9]+'
         and time_received >= '%(lhdy)s-%(lhdm)s-%(lhdd)s %(lhdh)s:00:00'
         and time_received < '%(dy)s-%(dm)s-%(dd)s %(dh)s:00:00'
 """
