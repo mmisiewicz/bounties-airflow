@@ -49,7 +49,7 @@ WHERE date_trunc('hour',time_received) = '%(y)s-%(m)s-%(d)s %(h)s:00:00'"""
 default_args = {
     'owner': 'michael.misiewicz',
     'depends_on_past': False,
-    'start_date': datetime(2019, 1, 9),
+    'start_date': datetime(2019, 1, 21, 0),
     'email': ['michael.misiewicz@consensys.net'],
     'email_on_failure': True,
     'email_on_retry': False,
