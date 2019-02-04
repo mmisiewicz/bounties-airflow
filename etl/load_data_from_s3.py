@@ -53,7 +53,7 @@ default_args = {
     'email': ['michael.misiewicz@consensys.net'],
     'email_on_failure': True,
     'email_on_retry': False,
-    'retries': 5,
+    'retries': 1,
     'retry_delay': timedelta(minutes=5)
 }
 

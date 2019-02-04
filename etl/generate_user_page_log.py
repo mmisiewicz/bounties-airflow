@@ -33,6 +33,7 @@ INSERT INTO staging.user_page_log_%(lhdy)s_%(lhdm)s_%(lhdd)s (time_received, uri
     WHERE (not uri ~ '^/notification/')
         and time_received >= '%(lhdy)s-%(lhdm)s-%(lhdd)s %(lhdh)s:00:00'
         and time_received < '%(dy)s-%(dm)s-%(dd)s %(dh)s:00:00'
+        and user_agent not in (select distinct user_agent from user_agent_blacklist)
 """
 
 create_sql = """
@@ -67,7 +68,7 @@ default_args = {
     'email': ['michael.misiewicz@consensys.net'],
     'email_on_failure': True,
     'email_on_retry': False,
-    'retries': 5,
+    'retries': 1,
     'retry_delay': timedelta(minutes=5)
 }
 
