@@ -149,7 +149,7 @@ def process_log_files(**context):
                 print("Malformed line: " + line[0:500])
                 file_bad_lines += 1
             except (AttributeError):
-                print("Regex error in file:line : %s:%s " % (file:file_line_count))
+                print("Regex error in file:line : %s:%s " % (file,file_line_count))
                 bad_regex_lines.append({'filename': file,
                                         'line_number': file_line_count,
                                         'bad_line': line})
