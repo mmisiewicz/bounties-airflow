@@ -131,6 +131,7 @@ def process_log_files(**context):
     files = s3.list_keys("bountiesapilog", prefix=filepath)
     files_processed = []
     log_data = []
+    bad_regex_lines = []
     for file in files:
         print("Processing file: " + file)
         file_line_count = 0
@@ -148,7 +149,10 @@ def process_log_files(**context):
                 print("Malformed line: " + line[0:500])
                 file_bad_lines += 1
             except (AttributeError):
-                print("Regex error on line: " + line[0:500])
+                print("Regex error in file:line : %s:%s " % (file:file_line_count))
+                bad_regex_lines.append({'filename': file,
+                                        'line_number': file_line_count,
+                                        'bad_line': line})
                 file_regex_failed += 1
             except:
                 print("Unhandled exception.")
@@ -164,6 +168,8 @@ def process_log_files(**context):
     stage_table_name = "staging.raw_s3_logs_{y}_{m}_{d}".format(**{'y':dy, 'm':dm, 'd':dd})
     cur.executemany("""INSERT INTO staging.files_processed (filename, file_line_count, file_bad_lines, file_regex_failed)
         VALUES (%(filename)s, %(file_line_count)s, %(file_bad_lines)s, %(file_regex_failed)s)""", files_processed)
+    cur.executemany("""INSERT INTO staging.raw_regex_failure_lines (filename, line_number, bad_line)
+        VALUES (%(filename)s, %(line_number)s, %(bad_line)s)""", bad_regex_lines)
     conn.commit()
     cur.executemany("INSERT INTO " + stage_table_name +
         """ (pid, ip, num_request_variables, packet_size, time_received,
