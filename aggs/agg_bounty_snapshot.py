@@ -21,7 +21,7 @@ default_args = {
 dag = DAG('agg_bounty_snapshot', default_args=default_args, schedule_interval= '@daily')
 
 insert_cmd = """INSERT INTO agg_bounty_snapshot (bounty_id, title, description, bounty_stage,
-            usd_price, deadline, created, ymd)
+            usd_price, user_id, deadline, created, ymd)
             SELECT bounty_id, title, description, "bountyStage" as bounty_stage,
             usd_price, user_id, deadline, created, '{{ ds }}' as ymd from bounties.std_bounties_bounty """
 delete_cmd = "DELETE FROM agg_bounty_snapshot WHERE ymd = '{{ ds }}' "
