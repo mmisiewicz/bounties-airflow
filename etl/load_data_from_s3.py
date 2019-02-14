@@ -18,7 +18,7 @@ from airflow.operators.postgres_operator import PostgresOperator
 REGEX = re.compile("\[pid:\s(?P<pid>\d*)\|app:\s-\|req:\s-\/-]\s(?P<ip>(?:\d+\.\d+\.\d+\.\d+(?:,\s)?)+)\s\(-\)\s\{(?P<num_request_variables>\d*)\svars\sin\s(?P<packet_size>\d*)\sbytes}\s\[(?P<time_received>.*)]\s(?P<http_method>\w*)\s(?P<uri>\/.*)\s=(?:\\u003e|>)\sgenerated\s(?P<response_size>\d*)\sbytes\sin\s(?P<response_time>\d*)\smsecs\s\(HTTP\/(?:\d*\.\d*)\s(?P<http_status>\d*)\)\s(?P<num_headers>\d*) headers\sin\s(?P<header_size>\d*)\sbytes\s\((?P<switches>\d*)\sswitches\son\score\s(?P<core>\d*)\)\sreferrer:\s(?P<referrer>[^\s]*)\sUA\s(?P<user_agent>.*)\shas\swallet:\s(?P<has_wallet>.*)\scookies:\s(?P<cookies>.*)\\n")
 
 sql_create_partition_command = """
-CREATE TABLE IF NOT EXISTS staging.raw_s3_logs_%(y)s_%(m)s_%(d)s
+CREATE TABLE IF NOT EXISTS staging.raw_s3_logs_%(y)s_%(m)s
 (pid int, ip inet, num_request_variables int, packet_size int, time_received timestamp,
 http_method varchar(10), uri text, response_size int, http_status int, num_headers int,
 header_size int, switches int, core int, referrer text, user_agent text,
@@ -28,8 +28,8 @@ row_added timestamp default now())
 """
 
 attach_part_sql = """
-    ALTER TABLE staging.raw_s3_logs ATTACH PARTITION staging.raw_s3_logs_%(dy)s_%(dm)s_%(dd)s
-    FOR VALUES FROM ('%(dy)s-%(dm)s-%(dd)s 00:00:00') TO ('%(tdy)s-%(tdm)s-%(tdd)s 00:00:00' )
+    ALTER TABLE staging.raw_s3_logs ATTACH PARTITION staging.raw_s3_logs_%(dy)s_%(dm)s
+    FOR VALUES FROM ('%(dy)s-%(dm)s-01 00:00:00') TO ('%(tdy)s-%(tdm)s-01 00:00:00' )
 """
 
 def attach_partition(**context):
@@ -45,7 +45,7 @@ def attach_partition(**context):
         print("Warning: ignoring exception creating partition")
         pass
 
-sql_truncate_table_command = """ DELETE FROM staging.raw_s3_logs_%(y)s_%(m)s_%(d)s
+sql_truncate_table_command = """ DELETE FROM staging.raw_s3_logs_%(y)s_%(m)s
 WHERE date_trunc('hour',time_received) = '%(y)s-%(m)s-%(d)s %(h)s:00:00'"""
 
 default_args = {
@@ -169,7 +169,7 @@ def process_log_files(**context):
     pg = PostgresHook(postgres_conn_id='postgres_data_warehouse')
     conn = pg.get_conn()
     cur = conn.cursor()
-    stage_table_name = "staging.raw_s3_logs_{y}_{m}_{d}".format(**{'y':dy, 'm':dm, 'd':dd})
+    stage_table_name = "staging.raw_s3_logs_{y}_{m}".format(**{'y':dy, 'm':dm})
     cur.executemany("""INSERT INTO staging.files_processed (filename, file_line_count, file_bad_lines, file_regex_failed)
         VALUES (%(filename)s, %(file_line_count)s, %(file_bad_lines)s, %(file_regex_failed)s)""", files_processed)
     cur.executemany("""INSERT INTO staging.raw_regex_failure_lines (filename, line_number, bad_line)
@@ -236,7 +236,7 @@ move_rows_to_partitions = PostgresOperator(
     task_id="move_rows_to_partitions",
     postgres_conn_id='postgres_data_warehouse',
     sql="""
-    INSERT INTO staging.raw_s3_logs_%(yy)s_%(ym)s_%(yd)s (pid, ip, num_request_variables, packet_size, time_received,
+    INSERT INTO staging.raw_s3_logs_%(yy)s_%(ym)s (pid, ip, num_request_variables, packet_size, time_received,
         http_method, uri, response_size, http_status, num_headers,
         header_size, switches, core, referrer, user_agent, has_wallet,
         session_id, user_id, user_id_uuid, ga_ga, ga_gid)
@@ -244,10 +244,10 @@ move_rows_to_partitions = PostgresOperator(
             http_method, uri, response_size, http_status, num_headers,
             header_size, switches, core, referrer, user_agent, has_wallet,
             session_id, user_id, user_id_uuid, ga_ga, ga_gid
-        FROM staging.raw_s3_logs_%(y)s_%(m)s_%(d)s
-        WHERE time_received < '%(y)s-%(m)s-%(d)s 00:00:00';
-        DELETE FROM staging.raw_s3_logs_%(y)s_%(m)s_%(d)s
-        WHERE time_received < '%(y)s-%(m)s-%(d)s 00:00:00';
+        FROM staging.raw_s3_logs_%(y)s_%(m)s
+        WHERE time_received < '%(y)s-%(m)s-01 00:00:00';
+        DELETE FROM staging.raw_s3_logs_%(y)s_%(m)s
+        WHERE time_received < '%(y)s-%(m)s-01 00:00:00';
         """ % {'y':DY, 'm':DM, 'd':DD, 'yy':YDY, 'ym':YDM, 'yd':YDD},
     dag=dag
 )
