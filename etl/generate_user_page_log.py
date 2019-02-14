@@ -12,19 +12,24 @@ DY = """{{ execution_date.strftime("%Y") }}"""
 DM = """{{ execution_date.strftime("%m") }}"""
 DD = """{{ execution_date.strftime("%d") }}"""
 DH = """{{ execution_date.strftime("%H") }}"""
-# Last hour's partition
+# Previous Partition
 LHDY = """{{ prev_execution_date.strftime("%Y") }}"""
 LHDM = """{{ prev_execution_date.strftime("%m") }}"""
 LHDD = """{{ prev_execution_date.strftime("%d") }}"""
 LHDH = """{{ prev_execution_date.strftime("%H") }}"""
-# Tomorrow (for partitioning)
-TDY = """{{ (execution_date + macros.timedelta(days = 1)).strftime("%Y") }}"""
-TDM = """{{ (execution_date + macros.timedelta(days = 1)).strftime("%m") }}"""
-TDD = """{{ (execution_date + macros.timedelta(days = 1)).strftime("%d") }}"""
+# # Tomorrow (for partitioning)
+# TDY = """{{ (prev_execution_date + macros.timedelta(days = 1)).strftime("%Y") }}"""
+# TDM = """{{ (prev_execution_date + macros.timedelta(days = 1)).strftime("%m") }}"""
+# TDD = """{{ (prev_execution_date + macros.timedelta(days = 1)).strftime("%d") }}"""
+# Next Month (for partitioning)
+NMDY = """{{ (prev_execution_date + macros.timedelta(months = 1)).strftime("%Y") }}"""
+NMDM = """{{ (prev_execution_date + macros.timedelta(months = 1)).strftime("%m") }}"""
+NMDD = """{{ (prev_execution_date + macros.timedelta(months = 1)).strftime("%d") }}"""
+
 
 # SQL Templates
 insert_sql = """
-INSERT INTO staging.user_page_log_%(lhdy)s_%(lhdm)s_%(lhdd)s (time_received, uri,
+INSERT INTO staging.user_page_log_%(lhdy)s_%(lhdm)s (time_received, uri,
     referrer, user_agent, has_wallet, ip, session_id, user_id, user_id_uuid,
     ga_ga, ga_gid)
     SELECT time_received, uri, referrer, user_agent, has_wallet, ip, session_id,
@@ -37,15 +42,17 @@ INSERT INTO staging.user_page_log_%(lhdy)s_%(lhdm)s_%(lhdd)s (time_received, uri
 """
 
 create_sql = """
-CREATE TABLE IF NOT EXISTS staging.user_page_log_%(lhdy)s_%(lhdm)s_%(lhdd)s
+CREATE TABLE IF NOT EXISTS staging.user_page_log_%(lhdy)s_%(lhdm)s
     (time_received timestamp, uri text, referrer text, user_agent text,
     has_wallet boolean, ip inet, session_id text, user_id int, user_id_uuid uuid,
-    ga_ga text, ga_gid text, row_added timestamp default now())
+    ga_ga text, ga_gid text, row_added timestamp default now());
+CREATE INDEX IF NOT EXISTS user_page_log_%(lhdy)s_%(lhdm)s_time_received_idx ON staging.user_page_log_%(lhdy)s_%(lhdm)s
+USING brin(time_received);
 """
 
 attach_part_sql = """
-ALTER TABLE staging.user_page_log ATTACH PARTITION staging.user_page_log_%(lhdy)s_%(lhdm)s_%(lhdd)s
-FOR VALUES FROM ('%(lhdy)s-%(lhdm)s-%(lhdd)s 00:00:00') TO ('%(tdy)s-%(tdm)s-%(tdd)s 00:00:00' )
+ALTER TABLE staging.user_page_log ATTACH PARTITION staging.user_page_log_%(lhdy)s_%(lhdm)s
+FOR VALUES FROM ('%(lhdy)s-%(lhdm)s-01 00:00:00') TO ('%(nmdy)s-%(nmdm)s-01 00:00:00' )
 """
 
 sense_sql = """
@@ -127,7 +134,7 @@ attach_partitions = PythonOperator(
     python_callable=attach_partition,
     provide_context=True,
     templates_dict={'lhdy':LHDY, 'lhdm':LHDM, 'lhdd':LHDD,
-                    'tdy':TDY, 'tdm':TDM, 'tdd':TDD},
+                    'nmdy':NMDY, 'nmdm':NMDM, 'nmdd':NMDD},
     dag=dag
 )
 

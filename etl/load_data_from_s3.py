@@ -23,8 +23,9 @@ CREATE TABLE IF NOT EXISTS staging.raw_s3_logs_%(y)s_%(m)s
 http_method varchar(10), uri text, response_size int, http_status int, num_headers int,
 header_size int, switches int, core int, referrer text, user_agent text,
 has_wallet boolean, session_id text, user_id int, user_id_uuid uuid, ga_ga text, ga_gid text,
-row_added timestamp default now())
-;
+row_added timestamp default now());
+CREATE INDEX IF NOT EXISTS raw_s3_logs_%(y)s_%(m)s_time_received_idx ON staging.raw_s3_logs_%(y)s_%(m)s
+USING brin(time_received);
 """
 
 attach_part_sql = """
@@ -60,19 +61,19 @@ default_args = {
 }
 
 dag = DAG('s3_log_etl', default_args=default_args, schedule_interval= '@hourly')
-# previous hour
+# Now
 DY = """{{ prev_execution_date.strftime("%Y") }}"""
 DM = """{{ prev_execution_date.strftime("%m") }}"""
 DD = """{{ prev_execution_date.strftime("%d") }}"""
 DH = """{{ prev_execution_date.strftime("%H") }}"""
-# yesterday's partition
-YDY = """{{ (prev_execution_date - macros.timedelta(days = 1)).strftime("%Y") }}"""
-YDM = """{{ (prev_execution_date - macros.timedelta(days = 1)).strftime("%m") }}"""
-YDD = """{{ (prev_execution_date - macros.timedelta(days = 1)).strftime("%d") }}"""
-# tomorrow
-TDY = """{{ (prev_execution_date + macros.timedelta(days = 1)).strftime("%Y") }}"""
-TDM = """{{ (prev_execution_date + macros.timedelta(days = 1)).strftime("%m") }}"""
-TDD = """{{ (prev_execution_date + macros.timedelta(days = 1)).strftime("%d") }}"""
+# Previous partition
+YDY = """{{ (prev_execution_date - macros.timedelta(months = 1)).strftime("%Y") }}"""
+YDM = """{{ (prev_execution_date - macros.timedelta(months = 1)).strftime("%m") }}"""
+YDD = """{{ (prev_execution_date - macros.timedelta(months = 1)).strftime("%d") }}"""
+# Next partition
+TDY = """{{ (prev_execution_date + macros.timedelta(months = 1)).strftime("%Y") }}"""
+TDM = """{{ (prev_execution_date + macros.timedelta(months = 1)).strftime("%m") }}"""
+TDD = """{{ (prev_execution_date + macros.timedelta(months = 1)).strftime("%d") }}"""
 
 
 FILEPATH = """%s/%s/%s/%s""" % (DY, DM, DD, DH)
@@ -122,7 +123,7 @@ def parse_line(line):
     nougat_center['ga_ga'] = clean_cookies.get('_ga')
     nougat_center['ga_gid'] = clean_cookies.get('_gid')
     # first IP, may be multiple due to X-Forwarded-For
-    nougat_center['ip'] = nougat_center['ip'][0]
+    nougat_center['ip'] = nougat_center['ip'].strip().split(",")[0]
     return nougat_center
 
 def process_log_files(**context):
