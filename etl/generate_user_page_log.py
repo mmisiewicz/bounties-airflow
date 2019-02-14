@@ -22,9 +22,9 @@ LHDH = """{{ prev_execution_date.strftime("%H") }}"""
 # TDM = """{{ (prev_execution_date + macros.timedelta(days = 1)).strftime("%m") }}"""
 # TDD = """{{ (prev_execution_date + macros.timedelta(days = 1)).strftime("%d") }}"""
 # Next Month (for partitioning)
-NMDY = """{{ (prev_execution_date + macros.timedelta(months = 1)).strftime("%Y") }}"""
-NMDM = """{{ (prev_execution_date + macros.timedelta(months = 1)).strftime("%m") }}"""
-NMDD = """{{ (prev_execution_date + macros.timedelta(months = 1)).strftime("%d") }}"""
+NMDY = """{{ (prev_execution_date + macros.timedelta(days = 32)).strftime("%Y") }}"""
+NMDM = """{{ (prev_execution_date + macros.timedelta(days = 32)).strftime("%m") }}"""
+NMDD = """{{ (prev_execution_date + macros.timedelta(days = 32)).strftime("%d") }}"""
 
 
 # SQL Templates

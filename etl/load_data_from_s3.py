@@ -66,14 +66,25 @@ DY = """{{ prev_execution_date.strftime("%Y") }}"""
 DM = """{{ prev_execution_date.strftime("%m") }}"""
 DD = """{{ prev_execution_date.strftime("%d") }}"""
 DH = """{{ prev_execution_date.strftime("%H") }}"""
-# Previous partition
-YDY = """{{ (prev_execution_date - macros.timedelta(months = 1)).strftime("%Y") }}"""
-YDM = """{{ (prev_execution_date - macros.timedelta(months = 1)).strftime("%m") }}"""
-YDD = """{{ (prev_execution_date - macros.timedelta(months = 1)).strftime("%d") }}"""
 # Next partition
-TDY = """{{ (prev_execution_date + macros.timedelta(months = 1)).strftime("%Y") }}"""
-TDM = """{{ (prev_execution_date + macros.timedelta(months = 1)).strftime("%m") }}"""
-TDD = """{{ (prev_execution_date + macros.timedelta(months = 1)).strftime("%d") }}"""
+# the use of "days = 32" is because Python's datetime module has no "months"
+# kwarg. We need to figure out the next month when we run on the first day at
+# hour 00 of a new month. So, adding 32 days will be certain to get us the next month
+# when this runs. Unfortunately not ideal, but since Airflow macros don't allow access to
+# the underlying `datetime` object itself (it's all just string macros here) we can't
+# write something more elegant.
+TDY = """{{ (prev_execution_date + macros.timedelta(days = 32)).strftime("%Y") }}"""
+TDM = """{{ (prev_execution_date + macros.timedelta(days = 32)).strftime("%m") }}"""
+TDD = """{{ (prev_execution_date + macros.timedelta(days = 32)).strftime("%d") }}"""
+# Previous partition
+# Similar to the above, this will allow us to correctly handle the month-boundary case.
+# When this macro is computed on the first day at hour 00, it's guaranteed to have the correct
+# value for the previous month (e.g. running at 2019-03-01 00:00:00 minus 1 day will
+# correctly return 2019-02-28 00:00:00).
+YDY = """{{ (prev_execution_date - macros.timedelta(days = 1)).strftime("%Y") }}"""
+YDM = """{{ (prev_execution_date - macros.timedelta(days = 1)).strftime("%m") }}"""
+YDD = """{{ (prev_execution_date - macros.timedelta(days = 1)).strftime("%d") }}"""
+
 
 
 FILEPATH = """%s/%s/%s/%s""" % (DY, DM, DD, DH)
