@@ -12,7 +12,7 @@ from airflow.sensors.s3_key_sensor import S3KeySensor
 from airflow.hooks.S3_hook import S3Hook
 from airflow.hooks.postgres_hook import PostgresHook
 from airflow.operators.postgres_operator import PostgresOperator
-from airflow.operators.slack_operator import SlackAPIPostOperator
+# from airflow.operators.slack_operator import SlackAPIPostOperator
 
 # REGEX = re.compile("\[pid:\s(?P<pid>\d*)\|app:\s-\|req:\s-\/-] (?P<ip>\d*\.\d*\.\d*\.\d*) \(-\)\s\{(?P<num_request_variables>\d*)\svars\sin\s(?P<packet_size>\d*)\sbytes}\s\[(?P<time_received>.*)]\s(?P<http_method>\w*)\s(?P<uri>\/.*)\s=(?:\\u003e|>)\sgenerated\s(?P<response_size>\d*)\sbytes\sin\s(?P<response_time>\d*)\smsecs\s\(HTTP\/(?:\d*\.\d*)\s(?P<http_status>\d*)\)\s(?P<num_headers>\d*) headers\sin\s(?P<header_size>\d*)\sbytes\s\((?P<switches>\d*)\sswitches\son\score\s(?P<core>\d*)\)\sreferrer:\s(?P<referrer>[^\s]*)\sUA\s(?P<user_agent>.*)\shas\swallet:\s(?P<has_wallet>.*)\scookies:\s(?P<cookies>.*)\\n")
 REGEX = re.compile("\[pid:\s(?P<pid>\d*)\|app:\s-\|req:\s-\/-]\s(?P<ip>(?:\d+\.\d+\.\d+\.\d+(?:,\s)?)+)\s\(-\)\s\{(?P<num_request_variables>\d*)\svars\sin\s(?P<packet_size>\d*)\sbytes}\s\[(?P<time_received>.*)]\s(?P<http_method>\w*)\s(?P<uri>\/.*)\s=(?:\\u003e|>)\sgenerated\s(?P<response_size>\d*)\sbytes\sin\s(?P<response_time>\d*)\smsecs\s\(HTTP\/(?:\d*\.\d*)\s(?P<http_status>\d*)\)\s(?P<num_headers>\d*) headers\sin\s(?P<header_size>\d*)\sbytes\s\((?P<switches>\d*)\sswitches\son\score\s(?P<core>\d*)\)\sreferrer:\s(?P<referrer>[^\s]*)\sUA\s(?P<user_agent>.*)\shas\swallet:\s(?P<has_wallet>.*)\scookies:\s(?P<cookies>.*)\\n")
@@ -257,17 +257,17 @@ move_rows_to_partitions = PostgresOperator(
 #
 # )
 
-all_succeeded = SlackAPIPostOperator(
-    channel='#analytics',
-    username="AirflowBot",
-    icon_url="https://airflow.apache.org/_images/pin_large.png",
-    slack_conn_id="slack_fora_internal",
-    text="S3 data has loaded successfully for DAG run {{ ds }}. Carry on!"
-)
+# all_succeeded = SlackAPIPostOperator(
+#     channel='#analytics',
+#     username="AirflowBot",
+#     icon_url="https://airflow.apache.org/_images/pin_large.png",
+#     slack_conn_id="slack_fora_internal",
+#     text="S3 data has loaded successfully for DAG run {{ ds }}. Carry on!"
+# )
 
 clear_partitions.set_upstream(create_partitions)
 create_partitions.set_upstream(sensor)
 load_logs_to_postgres.set_upstream(clear_partitions)
 move_rows_to_partitions.set_upstream(load_logs_to_postgres)
 attach_partitions.set_upstream(move_rows_to_partitions)
-all_succeeded.set_upstream(attach_partitions)
+# all_succeeded.set_upstream(attach_partitions)
