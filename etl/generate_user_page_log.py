@@ -65,7 +65,7 @@ default_args = {
     'owner': 'michael.misiewicz',
     'depends_on_past': True,
     'start_date': datetime(2019, 1, 21, 0),
-    'email': ['michael.misiewicz@consensys.net'],
+    'email': ['michael.misiewicz@consensys.net', 'matt.garnett@consensys.net'],
     'email_on_failure': True,
     'email_on_retry': False,
     'retries': 1,
@@ -80,6 +80,8 @@ sensor = SqlSensor(
     conn_id='postgres_data_warehouse',
     sql=sense_sql % {'dy':DY, 'dm':DM, 'dd':DD, 'dh':DH, 'lhdy':LHDY,
                      'lhdm':LHDM, 'lhdd':LHDD, 'lhdh':LHDH},
+    timeout=60 * 60 * 13, # 13h timeout (S3 load dag has 12h timeout)
+    poke_interval=15 * 60, # 15m between pokes
     dag=dag
 )
 

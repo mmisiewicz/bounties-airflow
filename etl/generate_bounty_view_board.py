@@ -45,7 +45,7 @@ default_args = {
     'owner': 'michael.misiewicz',
     'depends_on_past': True,
     'start_date': datetime(2019, 1, 21, 0),
-    'email': ['michael.misiewicz@consensys.net'],
+    'email': ['michael.misiewicz@consensys.net', 'matt.garnett@consensys.net'],
     'email_on_failure': True,
     'email_on_retry': False,
     'retries': 1,

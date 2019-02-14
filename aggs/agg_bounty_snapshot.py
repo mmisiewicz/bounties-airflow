@@ -9,9 +9,9 @@ from airflow.hooks.postgres_hook import PostgresHook
 
 default_args = {
     'owner': 'michael.misiewicz',
-    'depends_on_past': False,
+    'depends_on_past': true,
     'start_date': datetime(2019, 2, 6),
-    'email': ['michael.misiewicz@consensys.net'],
+    'email': ['michael.misiewicz@consensys.net', 'matt.garnett@consensys.net'],
     'email_on_failure': True,
     'email_on_retry': False,
     'retries': 1,

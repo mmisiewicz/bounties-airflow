@@ -26,9 +26,9 @@ WHERE
 
 default_args = {
     'owner': 'michael.misiewicz',
-    'depends_on_past': False,
+    'depends_on_past': True,
     'start_date': datetime(2019, 1, 10),
-    'email': ['michael.misiewicz@consensys.net'],
+    'email': ['michael.misiewicz@consensys.net', 'matt.garnett@consensys.net'],
     'email_on_failure': True,
     'email_on_retry': False,
     'retries': 1,
@@ -57,6 +57,8 @@ sensor = SqlSensor(
     task_id="sensor",
     conn_id='postgres_data_warehouse',
     sql=sense_sql % MACROS,
+    poke_interval= 15 * 60, # minutes
+    timeout = 60 * 60 * 13, # 13h, S3 dag has 12h timeout
     dag=dag
 )
 

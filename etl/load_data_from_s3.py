@@ -12,8 +12,10 @@ from airflow.sensors.s3_key_sensor import S3KeySensor
 from airflow.hooks.S3_hook import S3Hook
 from airflow.hooks.postgres_hook import PostgresHook
 from airflow.operators.postgres_operator import PostgresOperator
+from airflow.operators.slack_operator import SlackAPIPostOperator
 
-REGEX = re.compile("\[pid:\s(?P<pid>\d*)\|app:\s-\|req:\s-\/-] (?P<ip>\d*\.\d*\.\d*\.\d*) \(-\)\s\{(?P<num_request_variables>\d*)\svars\sin\s(?P<packet_size>\d*)\sbytes}\s\[(?P<time_received>.*)]\s(?P<http_method>\w*)\s(?P<uri>\/.*)\s=(?:\\u003e|>)\sgenerated\s(?P<response_size>\d*)\sbytes\sin\s(?P<response_time>\d*)\smsecs\s\(HTTP\/(?:\d*\.\d*)\s(?P<http_status>\d*)\)\s(?P<num_headers>\d*) headers\sin\s(?P<header_size>\d*)\sbytes\s\((?P<switches>\d*)\sswitches\son\score\s(?P<core>\d*)\)\sreferrer:\s(?P<referrer>[^\s]*)\sUA\s(?P<user_agent>.*)\shas\swallet:\s(?P<has_wallet>.*)\scookies:\s(?P<cookies>.*)\\n")
+# REGEX = re.compile("\[pid:\s(?P<pid>\d*)\|app:\s-\|req:\s-\/-] (?P<ip>\d*\.\d*\.\d*\.\d*) \(-\)\s\{(?P<num_request_variables>\d*)\svars\sin\s(?P<packet_size>\d*)\sbytes}\s\[(?P<time_received>.*)]\s(?P<http_method>\w*)\s(?P<uri>\/.*)\s=(?:\\u003e|>)\sgenerated\s(?P<response_size>\d*)\sbytes\sin\s(?P<response_time>\d*)\smsecs\s\(HTTP\/(?:\d*\.\d*)\s(?P<http_status>\d*)\)\s(?P<num_headers>\d*) headers\sin\s(?P<header_size>\d*)\sbytes\s\((?P<switches>\d*)\sswitches\son\score\s(?P<core>\d*)\)\sreferrer:\s(?P<referrer>[^\s]*)\sUA\s(?P<user_agent>.*)\shas\swallet:\s(?P<has_wallet>.*)\scookies:\s(?P<cookies>.*)\\n")
+REGEX = re.compile("\[pid:\s(?P<pid>\d*)\|app:\s-\|req:\s-\/-]\s(?P<ip>(?:\d+\.\d+\.\d+\.\d+(?:,\s)?)+)\s\(-\)\s\{(?P<num_request_variables>\d*)\svars\sin\s(?P<packet_size>\d*)\sbytes}\s\[(?P<time_received>.*)]\s(?P<http_method>\w*)\s(?P<uri>\/.*)\s=(?:\\u003e|>)\sgenerated\s(?P<response_size>\d*)\sbytes\sin\s(?P<response_time>\d*)\smsecs\s\(HTTP\/(?:\d*\.\d*)\s(?P<http_status>\d*)\)\s(?P<num_headers>\d*) headers\sin\s(?P<header_size>\d*)\sbytes\s\((?P<switches>\d*)\sswitches\son\score\s(?P<core>\d*)\)\sreferrer:\s(?P<referrer>[^\s]*)\sUA\s(?P<user_agent>.*)\shas\swallet:\s(?P<has_wallet>.*)\scookies:\s(?P<cookies>.*)\\n")
 
 sql_create_partition_command = """
 CREATE TABLE IF NOT EXISTS staging.raw_s3_logs_%(y)s_%(m)s_%(d)s
@@ -50,7 +52,7 @@ default_args = {
     'owner': 'michael.misiewicz',
     'depends_on_past': False,
     'start_date': datetime(2019, 1, 21, 0),
-    'email': ['michael.misiewicz@consensys.net'],
+    'email': ['michael.misiewicz@consensys.net', 'matt.garnett@consensys.net'],
     'email_on_failure': True,
     'email_on_retry': False,
     'retries': 1,
@@ -119,6 +121,8 @@ def parse_line(line):
     nougat_center['user_id_uuid'] = clean_cookies.get('uuid')
     nougat_center['ga_ga'] = clean_cookies.get('_ga')
     nougat_center['ga_gid'] = clean_cookies.get('_gid')
+    # first IP, may be multiple due to X-Forwarded-For
+    nougat_center['ip'] = nougat_center['ip'][0]
     return nougat_center
 
 def process_log_files(**context):
@@ -209,8 +213,8 @@ sensor = S3KeySensor(
     wildcard_match=True,
     bucket_name='bountiesapilog',
     s3_conn_id='bounties_s3',
-    timeout=18*60*60,
-    poke_interval=120,
+    timeout=12*60*60, # 12h timeout for poking
+    poke_interval=5 * 60, # 5m between pokes
     dag=dag)
 
 clear_partitions = PostgresOperator(
@@ -248,15 +252,22 @@ move_rows_to_partitions = PostgresOperator(
     dag=dag
 )
 
-# attach_partitions = PostgresOperator(
-#     task_id = "attach_partitions",
-#     postgres_conn_id = 'postgres_data_warehouse',
-#     sql =  % {'y':DY, 'm':DM, 'd':DD, 'tdy':TDY, 'tdm':TDM, 'tdd':TDD},
-#     dag=dag
+# TODO: conditional here
+# notify_on_failure = SlackAPIPostOperator(
+#
 # )
+
+all_succeeded = SlackAPIPostOperator(
+    channel='#analytics',
+    username="AirflowBot",
+    icon_url="https://airflow.apache.org/_images/pin_large.png",
+    slack_conn_id="slack_fora_internal",
+    text="S3 data has loaded successfully for DAG run {{ ds }}. Carry on!"
+)
 
 clear_partitions.set_upstream(create_partitions)
 create_partitions.set_upstream(sensor)
 load_logs_to_postgres.set_upstream(clear_partitions)
 move_rows_to_partitions.set_upstream(load_logs_to_postgres)
 attach_partitions.set_upstream(move_rows_to_partitions)
+all_succeeded.set_upstream(attach_partitions)
