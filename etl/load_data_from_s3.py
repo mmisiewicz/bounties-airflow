@@ -159,13 +159,17 @@ def process_log_files(**context):
             file_line_count += 1
             try:
                 nougat_center = parse_line(line)
-                if nougat_center != None:
-                    log_data.append(nougat_center)
+                # Check for bad hombres
+                if len(nougat_center['http_method']) > 10:
+                    raise AttributeError("Invalid HTTP method")
+                # all exceptions should be thrown before getting here.
+                log_data.append(nougat_center)
+                    
             except (KeyError, ValueError, TypeError, SyntaxError):
                 print("Malformed line: " + line[0:500])
                 file_bad_lines += 1
             except (AttributeError):
-                print("Regex error in file:line : %s:%s " % (file,file_line_count))
+                print("Regex error or bad data in file:line : %s:%s " % (file,file_line_count))
                 bad_regex_lines.append({'filename': file,
                                         'line_number': file_line_count,
                                         'bad_line': line})
